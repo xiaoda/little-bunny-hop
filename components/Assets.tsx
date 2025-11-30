@@ -1,43 +1,53 @@
 import React from 'react';
 
-export const RabbitSVG: React.FC<{ isHit: boolean }> = ({ isHit }) => (
-  <svg viewBox="0 0 100 100" className={`w-full h-full drop-shadow-lg transition-transform ${isHit ? 'scale-90 opacity-70' : 'animate-bounce'}`}>
-    {/* Ears */}
-    <ellipse cx="35" cy="20" rx="10" ry="25" fill="#fff" stroke="#eee" strokeWidth="2" />
-    <ellipse cx="65" cy="20" rx="10" ry="25" fill="#fff" stroke="#eee" strokeWidth="2" />
-    <ellipse cx="35" cy="20" rx="5" ry="15" fill="#ffb7b2" />
-    <ellipse cx="65" cy="20" rx="5" ry="15" fill="#ffb7b2" />
-    
-    {/* Face */}
-    <circle cx="50" cy="55" r="30" fill="#fff" stroke="#eee" strokeWidth="2" />
-    
-    {/* Eyes */}
-    {isHit ? (
-      <>
-        <line x1="35" y1="45" x2="45" y2="55" stroke="#333" strokeWidth="3" strokeLinecap="round"/>
-        <line x1="45" y1="45" x2="35" y2="55" stroke="#333" strokeWidth="3" strokeLinecap="round"/>
-        <line x1="55" y1="45" x2="65" y2="55" stroke="#333" strokeWidth="3" strokeLinecap="round"/>
-        <line x1="65" y1="45" x2="55" y2="55" stroke="#333" strokeWidth="3" strokeLinecap="round"/>
-      </>
-    ) : (
-      <>
-        <circle cx="40" cy="50" r="4" fill="#333" />
-        <circle cx="60" cy="50" r="4" fill="#333" />
-        <circle cx="42" cy="48" r="1.5" fill="#fff" />
-        <circle cx="62" cy="48" r="1.5" fill="#fff" />
-      </>
-    )}
+export const RabbitSVG: React.FC<{ isHit: boolean; isJumping?: boolean }> = ({ isHit, isJumping }) => {
+  let animationClass = 'animate-bounce'; // Default idle
+  
+  if (isHit) {
+    animationClass = 'scale-90 opacity-70';
+  } else if (isJumping) {
+    animationClass = 'animate-jump';
+  }
 
-    {/* Nose & Mouth */}
-    <ellipse cx="50" cy="60" rx="4" ry="3" fill="#ffb7b2" />
-    <path d="M 50 63 Q 45 70 40 65" stroke="#333" strokeWidth="2" fill="none" />
-    <path d="M 50 63 Q 55 70 60 65" stroke="#333" strokeWidth="2" fill="none" />
+  return (
+    <svg viewBox="0 0 100 100" className={`w-full h-full drop-shadow-lg transition-transform ${animationClass}`}>
+      {/* Ears */}
+      <ellipse cx="35" cy="20" rx="10" ry="25" fill="#fff" stroke="#eee" strokeWidth="2" />
+      <ellipse cx="65" cy="20" rx="10" ry="25" fill="#fff" stroke="#eee" strokeWidth="2" />
+      <ellipse cx="35" cy="20" rx="5" ry="15" fill="#ffb7b2" />
+      <ellipse cx="65" cy="20" rx="5" ry="15" fill="#ffb7b2" />
+      
+      {/* Face */}
+      <circle cx="50" cy="55" r="30" fill="#fff" stroke="#eee" strokeWidth="2" />
+      
+      {/* Eyes */}
+      {isHit ? (
+        <>
+          <line x1="35" y1="45" x2="45" y2="55" stroke="#333" strokeWidth="3" strokeLinecap="round"/>
+          <line x1="45" y1="45" x2="35" y2="55" stroke="#333" strokeWidth="3" strokeLinecap="round"/>
+          <line x1="55" y1="45" x2="65" y2="55" stroke="#333" strokeWidth="3" strokeLinecap="round"/>
+          <line x1="65" y1="45" x2="55" y2="55" stroke="#333" strokeWidth="3" strokeLinecap="round"/>
+        </>
+      ) : (
+        <>
+          <circle cx="40" cy="50" r="4" fill="#333" />
+          <circle cx="60" cy="50" r="4" fill="#333" />
+          <circle cx="42" cy="48" r="1.5" fill="#fff" />
+          <circle cx="62" cy="48" r="1.5" fill="#fff" />
+        </>
+      )}
 
-    {/* Cheeks */}
-    <circle cx="35" cy="60" r="5" fill="#ffb7b2" opacity="0.5" />
-    <circle cx="65" cy="60" r="5" fill="#ffb7b2" opacity="0.5" />
-  </svg>
-);
+      {/* Nose & Mouth */}
+      <ellipse cx="50" cy="60" rx="4" ry="3" fill="#ffb7b2" />
+      <path d="M 50 63 Q 45 70 40 65" stroke="#333" strokeWidth="2" fill="none" />
+      <path d="M 50 63 Q 55 70 60 65" stroke="#333" strokeWidth="2" fill="none" />
+
+      {/* Cheeks */}
+      <circle cx="35" cy="60" r="5" fill="#ffb7b2" opacity="0.5" />
+      <circle cx="65" cy="60" r="5" fill="#ffb7b2" opacity="0.5" />
+    </svg>
+  );
+};
 
 export const CarrotSVG: React.FC = () => (
   <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-md">

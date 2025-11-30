@@ -1,37 +1,67 @@
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { GameState, GameItem, Particle } from '../types';
+import { GameState, GameItem, Particle, Difficulty } from '../types';
 import { RabbitSVG, CarrotSVG, RockSVG, HeartSVG, BrokenHeartSVG } from './Assets';
-import { playSound } from '../utils/sound';
-import { Play, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { playSound, musicManager } from '../utils/sound';
+import { RotateCcw, ChevronLeft, ChevronRight, Pause, Play, LogOut, Volume2, VolumeX } from 'lucide-react';
 
 // Constants
 const LANES = 3;
-const GAME_SPEED_START = 0.5; // % height per frame
-const SPAWN_RATE = 60; // frames
 const MAX_LIVES = 3;
 
 interface GameCanvasProps {
   onGameOver: (score: number) => void;
   onExit: () => void;
+  isMuted: boolean;
+  toggleMute: () => void;
+  difficulty: Difficulty;
 }
 
-const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onExit }) => {
+// Configuration per difficulty
+const DIFFICULTY_CONFIG = {
+  EASY: {
+    startSpeed: 0.4,
+    spawnRate: 70, // Frames between spawns (higher = slower spawn)
+    rockChance: 0.2, // 20% chance of rock
+    speedIncrement: 0.02
+  },
+  MEDIUM: {
+    startSpeed: 0.6,
+    spawnRate: 60,
+    rockChance: 0.35,
+    speedIncrement: 0.05
+  },
+  HARD: {
+    startSpeed: 0.8,
+    spawnRate: 45,
+    rockChance: 0.5,
+    speedIncrement: 0.08
+  }
+};
+
+const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onExit, isMuted, toggleMute, difficulty }) => {
   // Game Logic State (Refs for performance in game loop)
   const itemsRef = useRef<GameItem[]>([]);
   const frameRef = useRef<number>(0);
   const scoreRef = useRef<number>(0);
-  const speedRef = useRef<number>(GAME_SPEED_START);
+  const speedRef = useRef<number>(DIFFICULTY_CONFIG[difficulty].startSpeed);
   const rabbitLaneRef = useRef<number>(1);
   const isHitRef = useRef<boolean>(false);
   const hitTimerRef = useRef<number>(0);
   const requestRef = useRef<number>();
+  const jumpTimeoutRef = useRef<number>(0);
   
   // React State for UI updates
   const [lives, setLives] = useState(MAX_LIVES);
   const [score, setScore] = useState(0);
   const [rabbitLane, setRabbitLane] = useState(1);
   const [isHit, setIsHit] = useState(false); // For visual feedback
+  const [isJumping, setIsJumping] = useState(false); // For jump animation
   const [particles, setParticles] = useState<Particle[]>([]);
+  const [isPaused, setIsPaused] = useState(false);
+
+  // Get current config
+  const config = DIFFICULTY_CONFIG[difficulty];
 
   // Spawn a particle explosion
   const spawnParticles = (x: number, y: number, color: string) => {
@@ -53,7 +83,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onExit }) => {
   };
 
   const moveRabbit = useCallback((direction: 'left' | 'right') => {
-    if (isHitRef.current) return; // Cannot move while stunned
+    if (isHitRef.current || isPaused) return; // Cannot move while stunned or paused
     
     let newLane = rabbitLaneRef.current;
     if (direction === 'left' && newLane > 0) newLane--;
@@ -63,26 +93,39 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onExit }) => {
       rabbitLaneRef.current = newLane;
       setRabbitLane(newLane);
       playSound('jump');
+      
+      // Trigger jump animation
+      setIsJumping(true);
+      if (jumpTimeoutRef.current) clearTimeout(jumpTimeoutRef.current);
+      jumpTimeoutRef.current = window.setTimeout(() => setIsJumping(false), 200);
     }
-  }, []);
+  }, [isPaused]);
 
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isPaused) return;
       if (e.key === 'ArrowLeft') moveRabbit('left');
       if (e.key === 'ArrowRight') moveRabbit('right');
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [moveRabbit]);
+  }, [moveRabbit, isPaused]);
+
+  // Clean up timeouts
+  useEffect(() => {
+    return () => {
+      if (jumpTimeoutRef.current) clearTimeout(jumpTimeoutRef.current);
+    };
+  }, []);
 
   // Main Game Loop
   const animate = useCallback(() => {
     frameRef.current++;
 
     // 1. Spawn Items
-    if (frameRef.current % SPAWN_RATE === 0) {
-      const type = Math.random() > 0.3 ? 'carrot' : 'rock'; // More carrots than rocks for kids
+    if (frameRef.current % config.spawnRate === 0) {
+      const type = Math.random() > (1 - config.rockChance) ? 'rock' : 'carrot'; 
       const lane = Math.floor(Math.random() * LANES);
       
       // Prevent spawning rock on top of rock immediately in same lane to avoid impossible situations
@@ -120,9 +163,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onExit }) => {
           playSound('collect');
           spawnParticles(item.lane * 33 + 16, item.y, '#fb923c'); // Orange sparkles
           
-          // Speed up slightly every 5 carrots
+          // Speed up slightly every 5 carrots based on difficulty increment
           if (scoreRef.current % 5 === 0) {
-            speedRef.current += 0.05;
+            speedRef.current += config.speedIncrement;
           }
           return false; // Remove item
         } else if (item.type === 'rock' && !isHitRef.current) {
@@ -164,21 +207,29 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onExit }) => {
     })).filter(p => p.life > 0));
 
     requestRef.current = requestAnimationFrame(animate);
-  }, [onGameOver]);
+  }, [onGameOver, config]);
 
+  // Start/Stop Game Loop based on Pause State
   useEffect(() => {
-    requestRef.current = requestAnimationFrame(animate);
+    if (isPaused) {
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      musicManager.pause();
+    } else {
+      musicManager.resume();
+      requestRef.current = requestAnimationFrame(animate);
+    }
+    
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [animate]);
+  }, [isPaused, animate]);
 
   return (
     <div className="relative w-full h-full bg-green-50 overflow-hidden flex flex-col">
       {/* Top HUD */}
       <div className="absolute top-0 left-0 w-full p-4 flex justify-between items-start z-20 pointer-events-none">
          {/* Lives */}
-         <div className="flex gap-1 bg-white/80 p-2 rounded-full backdrop-blur-sm border border-green-200">
+         <div className="flex gap-1 bg-white/80 p-2 rounded-full backdrop-blur-sm border border-green-200 shadow-sm">
             {[...Array(MAX_LIVES)].map((_, i) => (
               <div key={i}>
                 {i < lives ? <HeartSVG /> : <BrokenHeartSVG />}
@@ -186,14 +237,34 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onExit }) => {
             ))}
          </div>
          
-         {/* Score */}
-         <div className="flex items-center gap-2 bg-white/80 px-4 py-2 rounded-full backdrop-blur-sm border border-orange-200">
-           <div className="w-6 h-6"><CarrotSVG /></div>
-           <span className="text-2xl font-bold text-orange-600">{score}</span>
+         <div className="flex items-center gap-2 pointer-events-auto">
+             {/* Score */}
+             <div className="flex items-center gap-2 bg-white/80 px-4 py-2 rounded-full backdrop-blur-sm border border-orange-200 shadow-sm">
+               <div className="w-6 h-6"><CarrotSVG /></div>
+               <span className="text-2xl font-bold text-orange-600">{score}</span>
+             </div>
+             
+             {/* Mute Button (In-Game) */}
+             <button 
+                onClick={toggleMute}
+                className="p-2 bg-white/80 rounded-full hover:bg-white active:scale-95 transition-all shadow-sm border border-gray-200 text-gray-600"
+                aria-label={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
+             </button>
+
+             {/* Pause Button */}
+             <button 
+                onClick={() => setIsPaused(true)}
+                className="p-2 bg-white/80 rounded-full hover:bg-white active:scale-95 transition-all shadow-sm border border-blue-200 text-blue-600"
+                aria-label="Pause"
+             >
+                <Pause className="w-6 h-6" />
+             </button>
          </div>
       </div>
 
-      {/* Exit Button */}
+      {/* Exit Button (Bottom Left) */}
       <button 
         onClick={onExit}
         className="absolute bottom-4 left-4 z-30 p-2 bg-white/50 rounded-full hover:bg-white active:scale-95 transition-all"
@@ -214,7 +285,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onExit }) => {
         {/* Lane Click Areas (Invisible touch controls) */}
         <div className="absolute inset-0 flex z-10">
            <div className="flex-1 active:bg-white/10 transition-colors" onPointerDown={() => moveRabbit('left')}></div>
-           <div className="flex-1" onPointerDown={() => {/* Center tap does nothing or hops in place? Let's just keep sides */}}></div>
+           <div className="flex-1" onPointerDown={() => {/* Center tap does nothing */}}></div>
            <div className="flex-1 active:bg-white/10 transition-colors" onPointerDown={() => moveRabbit('right')}></div>
         </div>
 
@@ -268,9 +339,34 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGameOver, onExit }) => {
           }}
         >
           <div className="w-full h-full p-2">
-            <RabbitSVG isHit={isHit} />
+            <RabbitSVG isHit={isHit} isJumping={isJumping} />
           </div>
         </div>
+        
+        {/* Pause Overlay */}
+        {isPaused && (
+           <div className="absolute inset-0 z-40 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+             <div className="bg-white p-6 rounded-3xl shadow-2xl animate-fade-in flex flex-col items-center gap-4 min-w-[200px]">
+                <h2 className="text-3xl font-black text-blue-500 mb-2">PAUSED</h2>
+                
+                <button 
+                  onClick={() => setIsPaused(false)}
+                  className="w-full bg-green-500 hover:bg-green-600 text-white text-xl font-bold py-4 px-8 rounded-2xl shadow-[0_4px_0_rgb(21,128,61)] active:translate-y-[4px] active:shadow-none transition-all flex items-center justify-center gap-2"
+                >
+                  <Play className="w-6 h-6 fill-current" />
+                  RESUME
+                </button>
+
+                <button 
+                  onClick={onExit}
+                  className="w-full bg-red-100 hover:bg-red-200 text-red-600 text-lg font-bold py-3 px-8 rounded-2xl transition-all flex items-center justify-center gap-2"
+                >
+                  <LogOut className="w-5 h-5" />
+                  EXIT
+                </button>
+             </div>
+           </div>
+        )}
 
       </div>
     </div>
